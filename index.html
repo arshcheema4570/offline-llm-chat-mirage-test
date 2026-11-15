@@ -519,7 +519,7 @@ async function loadMirage() {
     const bytes = new Uint8Array(await res.arrayBuffer());
     const ptr = mallocBytes(bytes);
     try {
-      const rc = cactusModule._cactus_load(ptr, bytes.length);
+      const rc = cactusModule._cactus_load(ptr, BigInt(bytes.length)); // size is unsigned long long (i64) in cactus.h — Emscripten needs a BigInt
       if (rc < 0) throw new Error('cactus_load failed: ' + cactusError());
       if ((cactusModule._cactus_models() & 4) === 0) throw new Error('Mirage did not register as a vision model');
     } finally {
