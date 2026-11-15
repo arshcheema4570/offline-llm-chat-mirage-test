@@ -575,32 +575,70 @@ async function imageToRGB(file) {
 // test), objects capped at 15, text lines at 10, relations at 10.
 function compactMirageRecord(rec) {
   const lines = [];
-  const scene = (rec.scene || rec.description || '').toString().trim();
-  if (scene) lines.push('Scene: ' + scene);
-  const objs = Array.isArray(rec.objects) ? rec.objects.slice(0, 15) : [];
+  // Real schema (verified by running describe() locally, Nov 14):
+  // scene is an OBJECT {background, style, ...}, NOT a string.
+  const sc = rec.scene;
+  if (sc && typeof sc === 'object') {
+    const bits = Object.values(sc).filter((v) => typeof v === 'string' && v.trim());
+    if (bits.length) lines.push('Scene: ' + bits.join(', '));
+  } else if (typeof sc === 'string' && sc.trim()) lines.push('Scene: ' + sc.trim());
+  const allObjs = Array.isArray(rec.objects) ? rec.objects : [];
+  const byId = {};
+  allObjs.forEach((o) => { if (o && o.id != null) byId[o.id] = o; });
+  const objs = allObjs.slice(0, 15);
   if (objs.length) {
     lines.push('Objects: ' + objs.map((o) => {
       const name = o.name || o.label || 'thing';
-      const attrs = [o.color, o.material, o.shape].filter(Boolean).join(', ');
+      // description is an OBJECT {color, shape, content, direction, ...}
+      const d = (o.description && typeof o.description === 'object') ? o.description : {};
+      const attrs = [d.color, d.material, d.shape, d.direction, d.content]
+        .filter((v) => typeof v === 'string' && v.trim()).join(', ');
       const b = o.bbox || o.box;
       const box = Array.isArray(b) ? ' [' + b.map((v) => Math.round(v)).join(',') + ']' : '';
-      return name + (attrs ? ' (' + attrs + ')' : '') + box;
+      const pos = (typeof o.position === 'string' && o.position) ? ' at ' + o.position : '';
+      return name + (attrs ? ' (' + attrs + ')' : '') + box + pos;
     }).join('; '));
   }
   const texts = [];
   const pushText = (t) => {
     if (typeof t === 'string' && t.trim()) texts.push(t.trim());
+    // OCR entries use `string`, not `text`
+    else if (t && typeof t.string === 'string' && t.string.trim()) texts.push(t.string.trim());
     else if (t && typeof t.text === 'string' && t.text.trim()) texts.push(t.text.trim());
   };
   if (Array.isArray(rec.text)) rec.text.forEach(pushText);
   if (Array.isArray(rec.text_lines)) rec.text_lines.forEach(pushText);
   if (typeof rec.text === 'string') pushText(rec.text);
   if (texts.length) lines.push('Text in image: ' + texts.slice(0, 10).map((t) => '"' + t + '"').join(', '));
+  // Relations reference objects by numeric id — resolve to names.
   const rels = Array.isArray(rec.relations) ? rec.relations.slice(0, 10) : [];
   if (rels.length) {
-    lines.push('Relations: ' + rels.map((r) => (typeof r === 'string' ? r : [r.subject, r.relation || r.predicate, r.object].filter(Boolean).join(' '))).join('; '));
+    lines.push('Relations: ' + rels.map((r) => {
+      if (typeof r === 'string') return r;
+      const sName = (r.subject != null && byId[r.subject]) ? (byId[r.subject].name || 'thing') : r.subject;
+      const oName = (r.object != null && byId[r.object]) ? (byId[r.object].name || 'thing') : r.object;
+      return [sName, r.predicate || r.relation, oName].filter((v) => v != null && v !== '').join(' ');
+    }).join('; '));
   }
   return lines.join('\n');
+}
+
+// Short spoken-style summary of the record for the chat bubble.
+function summarizeRecord(rec) {
+  const objs = Array.isArray(rec.objects) ? rec.objects : [];
+  const bits = objs.slice(0, 8).map((o) => {
+    const d = (o.description && typeof o.description === 'object') ? o.description : {};
+    const label = [d.color, o.name].filter((v) => typeof v === 'string' && v.trim()).join(' ');
+    return label || (o.name || 'thing');
+  });
+  const texts = [];
+  if (Array.isArray(rec.text)) rec.text.forEach((t) => {
+    if (t && typeof t.string === 'string' && t.string.trim()) texts.push(t.string.trim());
+  });
+  texts.slice(0, 3).forEach((t) => bits.push('text reading "' + t + '"'));
+  return bits.length
+    ? 'I see ' + bits.join(', ') + '.'
+    : 'I looked at the photo but could not describe it.';
 }
 
 async function describePhoto(file) {
@@ -645,9 +683,7 @@ async function onPhotoPicked(file) {
   try {
     const rec = await describePhoto(file);
     const compact = compactMirageRecord(rec);
-    const sceneLine = (rec.scene || rec.description || '').toString().trim();
-    const nObj = Array.isArray(rec.objects) ? rec.objects.length : 0;
-    const summary = sceneLine || (nObj ? 'I see ' + nObj + ' object' + (nObj === 1 ? '' : 's') + ' in this photo.' : 'I looked at the photo but could not describe it.');
+    const summary = summarizeRecord(rec);
     addPhotoMsg(file, '📷 Photo attached');
     addMsg('assistant', summary);
     if (compact) {
