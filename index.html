@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#173d2b">
+<title>MNN-Pocket 0.3B + Mirage Vision — Offline LLM Chat (test)</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  /* Kheti family visual system: ink / cream / paper / gold */
+  :root {
+    --ink:#173d2b; --ink-2:#28533c; --cream:#f6f2e9; --paper:#fffdf8;
+    --gold:#e5a83b; --gold-soft:#f8e7b7; --line:#ded8c9; --muted:#6c766d;
+    --red:#a84e38; --shadow:0 16px 45px rgba(27,52,37,.12);
+    --btn:#173d2b; --user-bg:#173d2b; --input-bg:#fffefa; --track:var(--gold-soft);
+    --badge-bg:#dcead9; --badge-text:#28533c;
+    color-scheme: light dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--cream); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.45; display: flex; flex-direction: column; height: 100dvh; }
+  header { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .brand { display: flex; align-items: center; gap: 12px; flex: 1 1 auto; min-width: 220px; }
+  .mark { height: 43px; width: 43px; border-radius: 14px; background: var(--gold); display: grid; place-items: center; font-size: 23px; box-shadow: inset 0 -4px 0 rgba(0,0,0,.08); flex: 0 0 auto; }
+  .brand-text strong { display: block; font-family: Georgia, serif; font-size: 20px; letter-spacing: -.01em; }
+  .brand-text span { display: block; color: var(--muted); font-size: 12px; margin-top: 1px; }
+  .badge { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--badge-bg); color: var(--badge-text); font-weight: 600; white-space: nowrap; }
+  .badge.warn { background: var(--gold-soft); color: var(--ink-2); }
+  #status { font-size: 13px; padding: 8px 16px; min-height: 32px; color: var(--ink-2); }
+  #progressWrap { height: 6px; background: var(--track); margin: 0 16px; border-radius: 3px; overflow: hidden; display: none; }
+  #progressBar { height: 100%; width: 0%; background: var(--gold); transition: width .2s; }
+  #errorBox { display: none; margin: 4px 16px 0; padding: 12px 14px; background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--red); border-radius: 14px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; color: var(--ink); box-shadow: 0 5px 18px rgba(27,52,37,.04); }
+  #retryRow { display: none; gap: 8px; padding: 10px 16px 0; flex-wrap: wrap; }
+  #chat { flex: 1 1 auto; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 18px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; font-size: 15px; }
+  .user { align-self: flex-end; background: var(--user-bg); color: #f6f2e9; border-bottom-right-radius: 4px; }
+  .assistant { align-self: flex-start; background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-bottom-left-radius: 4px; box-shadow: 0 5px 18px rgba(27,52,37,.04); }
+  .meta { font-size: 12px; opacity: .65; margin-top: 4px; }
+  .msg-actions { margin-top: 8px; display: flex; gap: 8px; }
+  .speak-btn { font-size: 13px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--gold-soft); color: var(--ink); font-weight: 600; cursor: pointer; }
+  .speak-btn:disabled { opacity: .55; cursor: default; }
+  .speak-btn.speaking { background: var(--gold); }
+  .speak-btn.voice-on { background: var(--gold); }
+  .photo-btn { font-size: 15px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--gold-soft); color: var(--ink); font-weight: 700; cursor: pointer; white-space: nowrap; }
+  .msg img { max-width: 100%; border-radius: 12px; display: block; margin-bottom: 6px; }
+  form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+  input[type=text] { flex: 1 1 auto; font-size: 16px; padding: 10px 12px; border-radius: 11px; border: 1px solid var(--line); background: var(--input-bg); color: var(--ink); outline: none; }
+  input[type=text]:focus { border-color: var(--ink-2); box-shadow: 0 0 0 3px rgba(40,83,60,.15); }
+  button { font-size: 15px; padding: 10px 16px; border-radius: 12px; border: 0; background: var(--btn); color: #fff; cursor: pointer; font-weight: 700; }
+  button:disabled { opacity: .5; cursor: default; }
+  #loadBtn { background: var(--gold); color: var(--ink); }
+  #retryBtn { background: var(--btn); color: #fff; }
+  #clearBtn { background: var(--gold-soft); color: var(--ink); }
+  footer { font-size: 12px; color: var(--muted); padding: 0 16px 10px; }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --cream:#122019; --paper:#1a2b21; --ink:#e8efe9; --ink-2:#b9d2bd;
+      --line:#2c4636; --muted:#9db3a4; --user-bg:#28533c; --input-bg:#16241c;
+      --track:#2c4636; --badge-bg:#234434; --badge-text:#cfe6d2;
+    }
+    .badge.warn { background: #4a3a17; color: #f8e7b7; }
+    #clearBtn { background: #4a3a17; color: #f8e7b7; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="mark">💬</div>
+    <div class="brand-text">
+      <strong>MNN-Pocket 0.3B + Mirage — Offline Chat (test)</strong>
+      <span>Chat + vision on your device · no server, no WebGPU</span>
+    </div>
+  </div>
+  <span class="badge">CPU only (WASM)</span>
+  <span class="badge warn" id="offlineBadge">Online — first run</span>
+  <button id="loadBtn">Download model</button>
+  <button id="voiceToggle" type="button" class="speak-btn">🔊 Voice: Off</button>
+</header>
+<div id="status">Model not loaded. Tap “Download model” — one-time download (~0.19 GB), then it runs fully offline.</div>
+<div id="progressWrap"><div id="progressBar"></div></div>
+<div id="errorBox"></div>
+<div id="retryRow">
+  <button id="retryBtn" type="button">Retry download</button>
+  <button id="clearBtn" type="button">Clear cached model &amp; retry</button>
+</div>
+<main id="chat"></main>
+<form id="chatForm">
+  <button id="photoBtn" type="button" class="photo-btn" title="Attach a photo from your library">📷 Photo</button>
+  <button id="cameraBtn" type="button" class="photo-btn" title="Take a photo with the camera">📸 Camera</button>
+  <input id="photoInput" type="file" accept="image/*" hidden>
+  <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden>
+  <input id="input" type="text" placeholder="Ask anything…" autocomplete="off" disabled>
+  <button id="sendBtn" type="submit" disabled>Send</button>
+</form>
+<footer>Model: MNN-Pocket 0.3B Q4_1 (~0.19 GB) · Vision: Mirage 51M (~22 MB, Cactus engine WASM) — attach a photo and the text model answers from Mirage’s structured record · Runtime: wllama (llama.cpp compiled to WASM), n_gpu_layers: 0 — WebGPU explicitly off · Models cache in your browser; after the first download, no internet is needed. · Read-aloud voice: Phonon 31M — the Voice toggle in the header keeps auto-read on/off; or tap 🔊 on any reply. Voice downloads once, then works offline. · TEST COPY — the live app is unchanged.</footer>
+
+<script>
+// Surface module-load failures (e.g. a dead CDN import) in the status line
+// instead of leaving the Download button silently dead.
+window.addEventListener('error', (e) => {
+  if (e.target === window && /import|module|wllama/i.test(e.message || '')) {
+    const s = document.getElementById('status');
+    if (s && !window.__wllamaBooted) s.textContent = 'Failed to load the wllama runtime: ' + e.message;
+  }
+}, true);
+</script>
+<script type="module">
+import { Wllama } from 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.8.1/esm/index.js';
+window.__wllamaBooted = true;
+// wllama's wasm lives at this path in the published package (single wasm;
+// single- vs multi-thread is chosen at runtime based on COOP/COEP headers).
+const CONFIG_PATHS = {
+  default: 'https://cdn.jsdelivr.net/npm/@wllama/wllama@3.8.1/src/wasm/wllama.wasm',
+};
+
+const MODEL_URL = 'https://huggingface.co/taobao-mnn/MNN-Pocket-0.3B-GGUF/resolve/main/MNN-Pocket-0.3B-Instruct-Q4_1.gguf';
+const MODEL_FILE = MODEL_URL.split('/').pop();
+const statusEl = document.getElementById('status');
+const progressWrap = document.getElementById('progressWrap');
+const progressBar = document.getElementById('progressBar');
+const errorBox = document.getElementById('errorBox');
+const retryRow = document.getElementById('retryRow');
+const retryBtn = document.getElementById('retryBtn');
+const clearBtn = document.getElementById('clearBtn');
+const chatEl = document.getElementById('chat');
+const inputEl = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+const loadBtn = document.getElementById('loadBtn');
+const offlineBadge = document.getElementById('offlineBadge');
+
+let wllama = null;
+let loading = false;
+let generating = false;
+const history = [{ role: 'system', content: 'You are a helpful assistant. Keep answers concise.' }];
+
+/* ---- Read aloud: Phonon 31M natural voice (vendored runtime) ---- */
+// Same engine as Mind Gym: PhononTTS.load downloads the voice once and
+// caches it in the Cache API ('phonon-tts-v1', origin-scoped, so the copy
+// Mind Gym already downloaded on this origin is reused — no re-download).
+// The runtime is vendored (./vendor/phonon-tts/) instead of a CDN import:
+// phonon-tts resolves its worker + wasm relative to its own files, and
+// same-origin keeps that resolution trivial. If Phonon fails to load, the
+// button falls back to the device voice so it always does something.
+let tts = null, phononVoice = null, phononFailed = false;
+let phononAudio = null, phononGain = null;
+let activeSources = [], lastEnd = 0;
+const ttsRate = 1;
+let speakingRun = null; // { cancelled, abort, btn }
+let speakSeq = 0; // bumped by stopSpeaking; a pending voice load checks it
+
+function ensurePhononAudio() {
+  if (!phononAudio) {
+    phononAudio = new (window.AudioContext || window.webkitAudioContext)();
+    phononGain = phononAudio.createGain(); phononGain.gain.value = 1;
+    phononGain.connect(phononAudio.destination);
+  }
+  if (phononAudio.state === 'suspended') phononAudio.resume();
+}
+
+async function loadPhonon() {
+  if (tts || phononFailed) return tts;
+  ensurePhononAudio();
+  setStatus('Preparing natural voice…');
+  try {
+    const { PhononTTS } = await import('./vendor/phonon-tts/index.js');
+    tts = await PhononTTS.load({ lang: 'en', device: 'auto', quant: 'q8',
+      onProgress: ({ loaded, total, cached }) => {
+        setStatus(cached ? 'Reading the local voice cache…'
+          : total ? `Preparing natural voice… ${Math.round((loaded / total) * 100)}%`
+          : `Preparing natural voice… ${Math.round(loaded / 1048576)} MB`);
+      } });
+    phononVoice = tts.voices[0];
+    setStatus(`Natural voice ready · ${tts.voices.length} voices · offline from now on`);
+    return tts;
+  } catch (e) {
+    console.error('Phonon load failed, falling back to device voice', e);
+    phononFailed = true;
+    setStatus('Natural voice unavailable — using the device voice instead.');
+    return null;
+  }
+}
+
+function speakDevice(text) {
+  return new Promise((resolve) => {
+    if (!('speechSynthesis' in window)) return resolve();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = ttsRate;
+    let done = false;
+    const fin = () => { if (!done) { done = true; resolve(); } };
+    u.onend = fin; u.onerror = fin;
+    setTimeout(fin, Math.max(3000, text.length * 95 / ttsRate + 2500));
+    try { speechSynthesis.speak(u); } catch (e) { fin(); }
+  });
+}
+
+async function speakPhonon(text, run) {
+  ensurePhononAudio();
+  const parts = text.match(/[^.!?]+[.!?]+["']?|\S[^.!?]*$/g)?.map((s) => s.trim()).filter(Boolean) || [text];
+  try {
+    for (const part of parts) {
+      if (run.cancelled) break;
+      const stream = tts.stream(part, { voice: phononVoice, signal: run.abort.signal });
+      let cursor = Math.max(phononAudio.currentTime, lastEnd);
+      for await (const pcm of stream) {
+        if (run.cancelled) break;
+        const buf = phononAudio.createBuffer(1, pcm.length, tts.sampleRate);
+        buf.getChannelData(0).set(pcm);
+        const src = phononAudio.createBufferSource();
+        src.buffer = buf; src.playbackRate.value = ttsRate; src.connect(phononGain);
+        activeSources.push(src);
+        src.onended = () => { const i = activeSources.indexOf(src); if (i >= 0) activeSources.splice(i, 1); };
+        cursor = Math.max(cursor, phononAudio.currentTime);
+        src.start(cursor); cursor += buf.duration / ttsRate;
+      }
+      await stream.done.catch(() => {});
+      lastEnd = cursor;
+      const waitMs = Math.max(0, (cursor - phononAudio.currentTime) * 1000);
+      await new Promise((r) => setTimeout(r, waitMs + 250));
+      if (run.cancelled) break;
+    }
+  } catch (e) { if (!run.cancelled) console.error(e); }
+}
+
+function stopSpeaking() {
+  speakSeq++;
+  if (speakingRun) { speakingRun.cancelled = true; speakingRun.abort.abort(); }
+  try { speechSynthesis.cancel(); } catch (e) {}
+  activeSources.splice(0).forEach((s) => { try { s.stop(); } catch (e) {} });
+  document.querySelectorAll('.speak-btn.speaking').forEach((b) => {
+    b.classList.remove('speaking'); b.textContent = '🔊 Read aloud'; b.disabled = false;
+  });
+  speakingRun = null;
+}
+
+async function speakReply(text, btn) {
+  if (speakingRun && speakingRun.btn === btn) { stopSpeaking(); return; } // tap again = stop
+  stopSpeaking(); // stop any other reply's speech first
+  const seq = speakSeq;
+  btn.disabled = true; btn.textContent = 'Loading voice…';
+  const engine = await loadPhonon();
+  if (seq !== speakSeq) { btn.disabled = false; btn.textContent = '🔊 Read aloud'; return; } // superseded
+  const run = { cancelled: false, abort: new AbortController(), btn };
+  speakingRun = run;
+  btn.disabled = false; btn.classList.add('speaking'); btn.textContent = '■ Stop';
+  try {
+    if (engine && tts) await speakPhonon(text, run);
+    else await speakDevice(text);
+  } finally {
+    if (speakingRun === run) {
+      btn.classList.remove('speaking'); btn.textContent = '🔊 Read aloud';
+      speakingRun = null;
+    }
+  }
+}
+
+/* ---- Voice on/off toggle: persists, auto-reads every reply when on ---- */
+const voiceToggle = document.getElementById('voiceToggle');
+let voiceAuto = false;
+try { voiceAuto = localStorage.getItem('llmchat.voiceAuto') === 'on'; } catch (e) {}
+function renderVoiceToggle() {
+  voiceToggle.textContent = voiceAuto ? '🔊 Voice: On' : '🔊 Voice: Off';
+  voiceToggle.classList.toggle('voice-on', voiceAuto);
+}
+renderVoiceToggle();
+voiceToggle.addEventListener('click', () => {
+  voiceAuto = !voiceAuto;
+  try { localStorage.setItem('llmchat.voiceAuto', voiceAuto ? 'on' : 'off'); } catch (e) {}
+  renderVoiceToggle();
+  if (voiceAuto) loadPhonon(); // preload so the next reply reads instantly
+  else stopSpeaking();
+});
+// Unlock audio on the first user gesture so auto-read can play later:
+// browsers keep an AudioContext suspended until a gesture resumes it.
+const unlockAudio = () => {
+  if (voiceAuto) { ensurePhononAudio(); loadPhonon(); }
+  window.removeEventListener('pointerdown', unlockAudio);
+  window.removeEventListener('keydown', unlockAudio);
+};
+window.addEventListener('pointerdown', unlockAudio);
+window.addEventListener('keydown', unlockAudio);
+
+// Load-attempt diagnostics: wllama's progress callback is the only window
+// into the ~0.19 GB download, so remember the last numbers it reported.
+let lastLoaded = 0;
+let lastTotal = 0;
+let loadStage = 'starting';
+
+function setStatus(t) { statusEl.textContent = t; }
+function fmtMB(n) { return (n / 1048576).toFixed(0) + ' MB'; }
+function addMsg(role, text) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.textContent = text;
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return div;
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+if (!navigator.onLine) { offlineBadge.textContent = 'Offline mode'; }
+window.addEventListener('online', () => { offlineBadge.textContent = 'Online — first run'; });
+window.addEventListener('offline', () => { offlineBadge.textContent = 'Offline mode'; });
+
+// wllama 3.8.1 caches the model in OPFS under root 'cache/', keyed as
+// SHA-1(url)_filename, plus a '__metadata__' + key file. A download that
+// dies part-way leaves a partial file behind; wiping both entries forces
+// a clean re-download instead of reusing the broken copy.
+async function sha1Hex(str) {
+  const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+async function clearModelCache() {
+  if (!navigator.storage || !navigator.storage.getDirectory) {
+    return 'This browser has no OPFS model cache to clear.';
+  }
+  const root = await navigator.storage.getDirectory();
+  try {
+    await root.removeEntry('cache', { recursive: true });
+    return 'Model cache cleared (whole wllama cache folder removed).';
+  } catch (e) {
+    // Fallback: delete just this model's two entries.
+    try {
+      const fileKey = (await sha1Hex(MODEL_URL)) + '_' + MODEL_FILE;
+      const dir = await root.getDirectoryHandle('cache');
+      const removed = [];
+      for (const k of [fileKey, '__metadata__' + fileKey]) {
+        try { await dir.removeEntry(k); removed.push(k); } catch (_) { /* not present */ }
+      }
+      return removed.length
+        ? 'Cleared cached model file(s).'
+        : 'Nothing cached to clear (' + (e && e.message ? e.message : e) + ').';
+    } catch (e2) {
+      return 'Could not clear the cache: ' + (e2 && e2.message ? e2.message : e2);
+    }
+  }
+}
+
+async function loadModel(opts = {}) {
+  if (wllama || loading) return;
+  loading = true;
+  loadStage = 'starting';
+  lastLoaded = 0;
+  lastTotal = 0;
+  errorBox.style.display = 'none';
+  retryRow.style.display = 'none';
+  loadBtn.disabled = true;
+  loadBtn.textContent = opts.auto ? 'Loading…' : 'Downloading…';
+  setStatus(opts.auto ? 'Loading saved model…' : 'Loading MNN-Pocket 0.3B on CPU (WASM)… first run downloads ~0.19 GB.');
+  progressWrap.style.display = 'block';
+  progressBar.style.width = '0%';
+  try {
+    wllama = new Wllama(CONFIG_PATHS);
+    await wllama.loadModelFromUrl(MODEL_URL, {
+      n_threads: Math.max(1, navigator.hardwareConcurrency || 4),
+      n_gpu_layers: 0, // WebGPU explicitly off — CPU/WASM only
+      useCache: true,
+      progressCallback: ({ loaded, total }) => {
+        lastLoaded = loaded || 0;
+        lastTotal = total || 0;
+        if (total) {
+          const pct = Math.round((loaded / total) * 100);
+          loadStage = pct >= 100
+            ? 'initializing (download done, loading into memory)'
+            : 'downloading';
+          progressBar.style.width = pct + '%';
+          setStatus(`Downloading model — ${pct}%`);
+        }
+      },
+    });
+    progressWrap.style.display = 'none';
+    setStatus('Model ready — MNN-Pocket 0.3B running fully on CPU (WASM). No WebGPU, no server.');
+    offlineBadge.textContent = 'Ready — works offline';
+    inputEl.disabled = false;
+    sendBtn.disabled = false;
+    loadBtn.textContent = 'Model loaded';
+    inputEl.focus();
+  } catch (err) {
+    // The old code left `wllama` assigned after a failure, which made the
+    // Download button a no-op (its handler returned early). Reset it so
+    // Retry actually retries.
+    wllama = null;
+    console.error('Model load failed', { stage: loadStage, loaded: lastLoaded, total: lastTotal, online: navigator.onLine, err });
+    const errName = (err && err.name) || 'Error';
+    const errMsg = (err && err.message) || String(err);
+    const pct = lastTotal ? Math.round((lastLoaded / lastTotal) * 100) : 0;
+    const bytesLine = lastTotal
+      ? `Downloaded: ${fmtMB(lastLoaded)} of ${fmtMB(lastTotal)} (${pct}%)`
+      : (lastLoaded ? `Downloaded: ${fmtMB(lastLoaded)} (total size unknown)` : 'Downloaded: nothing arrived');
+    let hint;
+    if (lastLoaded > 0 && lastTotal && lastLoaded < lastTotal) {
+      hint = 'What this means: the download stopped part-way — the connection dropped before the 0.19 GB file finished. The model file itself is fine; this is the mobile network. Tap “Retry download” — it starts again from the beginning, so Wi-Fi or a stronger signal helps.';
+    } else if (lastLoaded >= lastTotal && lastTotal > 0) {
+      hint = 'What this means: the download finished, but the model would not start in memory — the saved copy may be damaged. Tap “Clear cached model & retry”: it wipes the saved copy and downloads fresh.';
+    } else {
+      hint = 'What this means: nothing arrived from the model host — check your connection and tap “Retry download”. If it keeps failing at 0%, tap “Clear cached model & retry”.';
+    }
+    setStatus('Failed to load model.');
+    errorBox.textContent =
+      'Couldn’t load the model\n' +
+      'Stage: ' + loadStage + '\n' +
+      'Error: ' + errName + ': ' + errMsg + '\n' +
+      bytesLine + '\n' +
+      'Connection: ' + (navigator.onLine ? 'online' : 'offline (no connection)') + '\n' +
+      hint;
+    errorBox.style.display = 'block';
+    retryRow.style.display = 'flex';
+    loadBtn.disabled = false;
+    loadBtn.textContent = 'Retry download';
+  } finally {
+    loading = false;
+  }
+}
+
+loadBtn.addEventListener('click', loadModel);
+retryBtn.addEventListener('click', loadModel);
+clearBtn.addEventListener('click', async () => {
+  if (loading) return;
+  retryBtn.disabled = true;
+  clearBtn.disabled = true;
+  setStatus('Clearing cached model…');
+  try {
+    const result = await clearModelCache();
+    setStatus(result + ' Retrying download…');
+  } catch (e) {
+    setStatus('Could not clear the cache: ' + (e && e.message ? e.message : e) + ' Retrying anyway…');
+  }
+  retryBtn.disabled = false;
+  clearBtn.disabled = false;
+  loadModel();
+});
+
+// Auto-load on startup when the model is already cached, so there's no
+// tap: open the app and just type. First run (nothing cached) keeps the
+// Download button, so the ~0.19 GB download never starts unasked.
+// Both OPFS entries = a completed download; a partial download leaves
+// the file without its metadata entry, so it falls back to the button.
+async function isModelCached() {
+  if (!navigator.storage || !navigator.storage.getDirectory) return false;
+  try {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle('cache');
+    const fileKey = (await sha1Hex(MODEL_URL)) + '_' + MODEL_FILE;
+    await dir.getFileHandle(fileKey);
+    await dir.getFileHandle('__metadata__' + fileKey);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+setStatus('Checking for the saved model…');
+isModelCached().then((cached) => {
+  if (cached) loadModel({ auto: true });
+  else setStatus('Model not loaded. Tap “Download model” — one-time download (~0.19 GB), then it runs fully offline.');
+}).catch(() => {});
+
+/* ---- Vision: Mirage 51M (Cactus engine, WASM) — TEST COPY only ---- */
+// Mirage is NOT a GGUF model, so it cannot run in wllama. It runs on the
+// Cactus engine (vendor/cactus/cactus.js + cactus.wasm, Apache 2.0 — see
+// vendor/cactus/LICENSE-CACTUS.txt), which is a single-threaded WASM
+// build: no SharedArrayBuffer, no Atomics, no pthreads, so it needs no
+// COOP/COEP headers and works on plain GitHub Pages. The engine is loaded
+// lazily on the first photo attach; mirage.cact (~22 MB) is fetched from
+// this same origin and the service worker caches it, so vision works
+// offline after the first use. describe() takes raw RGB pixels and
+// returns a JSON record (scene, objects, OCR text, relations). That record
+// is compacted to plain text and added to the chat history as a system
+// message, so the MNN text model can answer questions about the photo
+// without ever seeing pixels.
+const MIRAGE_MODEL_URL = 'vendor/cactus/mirage.cact';
+let cactusModule = null, cactusLoading = null, mirageReady = false, describing = false;
+
+function loadCactusScript() {
+  return new Promise((resolve, reject) => {
+    if (window.createCactus) return resolve();
+    // Classic script tag (not a module): cactus.js is UMD and declares
+    // `var createCactus` at top level, which lands on window. It also
+    // resolves cactus.wasm relative to its own URL (vendor/cactus/).
+    const s = document.createElement('script');
+    s.src = 'vendor/cactus/cactus.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('could not load vendor/cactus/cactus.js'));
+    document.head.appendChild(s);
+  });
+}
+
+function cactusError() {
+  try {
+    const p = cactusModule && cactusModule._cactus_last_error && cactusModule._cactus_last_error();
+    return p ? cactusModule.UTF8ToString(p) : '';
+  } catch (e) { return ''; }
+}
+
+function mallocBytes(bytes) {
+  const ptr = cactusModule._malloc(bytes.length);
+  if (!ptr) throw new Error('out of memory in the vision engine');
+  cactusModule.HEAPU8.set(bytes, ptr);
+  return ptr;
+}
+function mallocString(str) {
+  const n = cactusModule.lengthBytesUTF8(str) + 1;
+  const ptr = cactusModule._malloc(n);
+  if (!ptr) throw new Error('out of memory in the vision engine');
+  cactusModule.stringToUTF8(str, ptr, n);
+  return ptr;
+}
+
+async function loadMirage() {
+  if (mirageReady) return true;
+  if (cactusLoading) return cactusLoading;
+  cactusLoading = (async () => {
+    setStatus('Loading vision model (Mirage, ~22 MB, one-time)…');
+    await loadCactusScript();
+    cactusModule = await window.createCactus();
+    const res = await fetch(MIRAGE_MODEL_URL);
+    if (!res.ok) throw new Error('could not fetch ' + MIRAGE_MODEL_URL + ' (HTTP ' + res.status + ')');
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const ptr = mallocBytes(bytes);
+    try {
+      const rc = cactusModule._cactus_load(ptr, bytes.length);
+      if (rc < 0) throw new Error('cactus_load failed: ' + cactusError());
+      if ((cactusModule._cactus_models() & 4) === 0) throw new Error('Mirage did not register as a vision model');
+    } finally {
+      cactusModule._free(ptr);
+    }
+    mirageReady = true;
+    return true;
+  })().catch((e) => {
+    cactusLoading = null;
+    console.error('Mirage load failed', e);
+    throw e;
+  });
+  return cactusLoading;
+}
+
+// Decode an image file to RGB bytes (longest side capped at 1024 px —
+// the encoder works on 256 image cells, so more pixels add nothing).
+// imageOrientation 'from-image' honours phone EXIF rotation.
+async function imageToRGB(file) {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const scale = Math.min(1, 1024 / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const rgb = new Uint8Array(w * h * 3);
+  for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
+    rgb[j] = data[i]; rgb[j + 1] = data[i + 1]; rgb[j + 2] = data[i + 2];
+  }
+  bitmap.close();
+  return { rgb, width: w, height: h };
+}
+
+// Compact the Mirage JSON to short plain text: masks and the reasoning
+// trace are dropped (the trace showed no VQA benefit in Cactus's own
+// test), objects capped at 15, text lines at 10, relations at 10.
+function compactMirageRecord(rec) {
+  const lines = [];
+  const scene = (rec.scene || rec.description || '').toString().trim();
+  if (scene) lines.push('Scene: ' + scene);
+  const objs = Array.isArray(rec.objects) ? rec.objects.slice(0, 15) : [];
+  if (objs.length) {
+    lines.push('Objects: ' + objs.map((o) => {
+      const name = o.name || o.label || 'thing';
+      const attrs = [o.color, o.material, o.shape].filter(Boolean).join(', ');
+      const b = o.bbox || o.box;
+      const box = Array.isArray(b) ? ' [' + b.map((v) => Math.round(v)).join(',') + ']' : '';
+      return name + (attrs ? ' (' + attrs + ')' : '') + box;
+    }).join('; '));
+  }
+  const texts = [];
+  const pushText = (t) => {
+    if (typeof t === 'string' && t.trim()) texts.push(t.trim());
+    else if (t && typeof t.text === 'string' && t.text.trim()) texts.push(t.text.trim());
+  };
+  if (Array.isArray(rec.text)) rec.text.forEach(pushText);
+  if (Array.isArray(rec.text_lines)) rec.text_lines.forEach(pushText);
+  if (typeof rec.text === 'string') pushText(rec.text);
+  if (texts.length) lines.push('Text in image: ' + texts.slice(0, 10).map((t) => '"' + t + '"').join(', '));
+  const rels = Array.isArray(rec.relations) ? rec.relations.slice(0, 10) : [];
+  if (rels.length) {
+    lines.push('Relations: ' + rels.map((r) => (typeof r === 'string' ? r : [r.subject, r.relation || r.predicate, r.object].filter(Boolean).join(' '))).join('; '));
+  }
+  return lines.join('\n');
+}
+
+async function describePhoto(file) {
+  await loadMirage();
+  setStatus('Mirage is looking at the photo…');
+  const { rgb, width, height } = await imageToRGB(file);
+  const outCap = 262144; // 256 KB JSON buffer
+  const rgbPtr = mallocBytes(rgb);
+  const optPtr = mallocString('{}'); // defaults: full record (scene, objects, text, relations)
+  const langPtr = mallocString('en');
+  const outPtr = cactusModule._malloc(outCap);
+  if (!outPtr) throw new Error('out of memory in the vision engine');
+  try {
+    const rc = cactusModule._cactus_describe(rgbPtr, width, height, optPtr, langPtr, 0, outPtr, outCap);
+    if (rc < 0) throw new Error('cactus_describe failed: ' + cactusError());
+    return JSON.parse(cactusModule.UTF8ToString(outPtr));
+  } finally {
+    cactusModule._free(rgbPtr); cactusModule._free(optPtr);
+    cactusModule._free(langPtr); cactusModule._free(outPtr);
+  }
+}
+
+function addPhotoMsg(file, caption) {
+  const div = document.createElement('div');
+  div.className = 'msg user';
+  const img = document.createElement('img');
+  img.src = URL.createObjectURL(file);
+  img.alt = 'Attached photo';
+  div.appendChild(img);
+  const cap = document.createElement('div');
+  cap.textContent = caption;
+  div.appendChild(cap);
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return div;
+}
+
+async function onPhotoPicked(file) {
+  if (!file || !file.type.startsWith('image/') || describing) return;
+  describing = true;
+  const prevStatus = statusEl.textContent;
+  try {
+    const rec = await describePhoto(file);
+    const compact = compactMirageRecord(rec);
+    const sceneLine = (rec.scene || rec.description || '').toString().trim();
+    const nObj = Array.isArray(rec.objects) ? rec.objects.length : 0;
+    const summary = sceneLine || (nObj ? 'I see ' + nObj + ' object' + (nObj === 1 ? '' : 's') + ' in this photo.' : 'I looked at the photo but could not describe it.');
+    addPhotoMsg(file, '📷 Photo attached');
+    addMsg('assistant', summary);
+    if (compact) {
+      history.push({ role: 'system', content: 'The user shared a photo. Mirage (vision model) produced this structured record of it — use ONLY this record to answer questions about the photo; if a detail is not in the record, say you cannot see it:\n' + compact });
+    }
+    setStatus('Photo described. Ask anything about it — the text model answers from Mirage’s record.');
+    if (!wllama) setStatus(prevStatus); // model not loaded yet: its loader owns the status line
+  } catch (e) {
+    console.error('Photo describe failed', e);
+    addMsg('assistant', 'I could not look at that photo: ' + (e && e.message ? e.message : e));
+    setStatus('Vision failed: ' + (e && e.message ? e.message : e));
+  } finally {
+    describing = false;
+  }
+}
+
+const photoBtn = document.getElementById('photoBtn');
+const cameraBtn = document.getElementById('cameraBtn');
+const photoInput = document.getElementById('photoInput');
+const cameraInput = document.getElementById('cameraInput');
+photoBtn.addEventListener('click', () => photoInput.click());
+cameraBtn.addEventListener('click', () => cameraInput.click());
+photoInput.addEventListener('change', () => { onPhotoPicked(photoInput.files[0]); photoInput.value = ''; });
+cameraInput.addEventListener('change', () => { onPhotoPicked(cameraInput.files[0]); cameraInput.value = ''; });
+
+document.getElementById('chatForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!wllama || generating) return;
+  const text = inputEl.value.trim();
+  if (!text) return;
+  inputEl.value = '';
+  addMsg('user', text);
+  history.push({ role: 'user', content: text });
+  generating = true;
+  sendBtn.disabled = true;
+  const outDiv = addMsg('assistant', '');
+  const t0 = performance.now();
+  let tokens = 0;
+  // Chat completion using the loaded model's own chat template.
+  // (The old code hand-built one model's prompt format, which other
+  // models don't understand — that's what made MNN-Pocket ramble.)
+  try {
+    const stream = await wllama.createChatCompletion({
+      messages: history,
+      max_tokens: 512,
+      temperature: 0.7,
+      stream: true,
+    });
+    let raw = '';
+    for await (const chunk of stream) {
+      const piece = chunk.choices[0]?.delta?.content ?? chunk.choices[0]?.text ?? '';
+      if (piece) { tokens++; raw += piece; outDiv.textContent = raw; chatEl.scrollTop = chatEl.scrollHeight; }
+    }
+    history.push({ role: 'assistant', content: raw });
+    const secs = (performance.now() - t0) / 1000;
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = `${tokens} tokens in ${secs.toFixed(1)}s (${(tokens / secs).toFixed(1)} tok/s, CPU/WASM)`;
+    outDiv.appendChild(meta);
+    const actions = document.createElement('div');
+    actions.className = 'msg-actions';
+    const speakBtn = document.createElement('button');
+    speakBtn.type = 'button';
+    speakBtn.className = 'speak-btn';
+    speakBtn.textContent = '🔊 Read aloud';
+    speakBtn.addEventListener('click', () => speakReply(raw, speakBtn));
+    actions.appendChild(speakBtn);
+    outDiv.appendChild(actions);
+    if (voiceAuto) speakReply(raw, speakBtn); // Voice on: read every reply aloud
+  } catch (err) {
+    console.error(err);
+    outDiv.textContent = 'Error: ' + (err && err.message ? err.message : err);
+  }
+  generating = false;
+  sendBtn.disabled = false;
+  inputEl.focus();
+});
+</script>
+</body>
+</html>
