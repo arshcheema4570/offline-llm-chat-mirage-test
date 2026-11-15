@@ -489,8 +489,21 @@ function loadCactusScript() {
 function cactusError() {
   try {
     const p = cactusModule && cactusModule._cactus_last_error && cactusModule._cactus_last_error();
-    return p ? cactusModule.UTF8ToString(p) : '';
+    return p ? readUtf8(p) : '';
   } catch (e) { return ''; }
+}
+
+// Plain-JS UTF-8 helpers: cactus.js does not export Emscripten's
+// lengthBytesUTF8/stringToUTF8/UTF8ToString runtime methods, so work
+// directly against HEAPU8 with TextEncoder/TextDecoder instead.
+const utf8Encoder = new TextEncoder();
+const utf8Decoder = new TextDecoder();
+function readUtf8(ptr) {
+  if (!ptr) return '';
+  const heap = cactusModule.HEAPU8;
+  let end = ptr;
+  while (heap[end] !== 0) end++;
+  return utf8Decoder.decode(heap.subarray(ptr, end));
 }
 
 function mallocBytes(bytes) {
@@ -500,10 +513,11 @@ function mallocBytes(bytes) {
   return ptr;
 }
 function mallocString(str) {
-  const n = cactusModule.lengthBytesUTF8(str) + 1;
-  const ptr = cactusModule._malloc(n);
+  const bytes = utf8Encoder.encode(str);
+  const ptr = cactusModule._malloc(bytes.length + 1);
   if (!ptr) throw new Error('out of memory in the vision engine');
-  cactusModule.stringToUTF8(str, ptr, n);
+  cactusModule.HEAPU8.set(bytes, ptr);
+  cactusModule.HEAPU8[ptr + bytes.length] = 0;
   return ptr;
 }
 
@@ -602,7 +616,7 @@ async function describePhoto(file) {
   try {
     const rc = cactusModule._cactus_describe(rgbPtr, width, height, optPtr, langPtr, 0, outPtr, outCap);
     if (rc < 0) throw new Error('cactus_describe failed: ' + cactusError());
-    return JSON.parse(cactusModule.UTF8ToString(outPtr));
+    return JSON.parse(readUtf8(outPtr));
   } finally {
     cactusModule._free(rgbPtr); cactusModule._free(optPtr);
     cactusModule._free(langPtr); cactusModule._free(outPtr);
